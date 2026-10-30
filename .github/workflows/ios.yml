@@ -21,19 +21,9 @@ jobs:
 
       - name: Extraire automatiquement NORD
         run: |
-          if [ ! -f nord-1.zip ]; then
-            echo "::error::nord-1.zip introuvable"
-            exit 1
-          fi
-
+          test -f nord-1.zip || exit 1
           unzip -q -o nord-1.zip
-
-          if [ ! -f nord-1/package.json ]; then
-            echo "::error::package.json introuvable dans nord-1"
-            exit 1
-          fi
-
-          echo "Application NORD extraite"
+          test -f nord-1/package.json || exit 1
 
       - name: Installer Node.js 22
         uses: actions/setup-node@v4
@@ -46,20 +36,22 @@ jobs:
         working-directory: nord-1
         run: |
           node --version
-          npm --version
           npm install --no-audit --no-fund
+          test -x node_modules/.bin/vite
 
       - name: Installer Capacitor iOS
         working-directory: nord-1
         run: |
           CAP_VERSION=$(node -p "require('./node_modules/@capacitor/core/package.json').version")
           npm install --no-save "@capacitor/ios@${CAP_VERSION}" --no-audit --no-fund
+          test -x node_modules/.bin/vite
 
       - name: Construire NORD
         working-directory: nord-1
         env:
           MOBILE_BUILD: "1"
         run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
           node scripts/with-app-env.mjs vite build
 
       - name: Generer le projet iOS
@@ -74,7 +66,7 @@ jobs:
           xcodebuild -version
           xcodebuild -list -workspace ios/App/App.xcworkspace
 
-      - name: Compiler et archiver NORD
+      - name: Compiler NORD
         working-directory: nord-1
         run: |
           xcodebuild archive \
@@ -90,14 +82,9 @@ jobs:
       - name: Generer le fichier IPA
         run: |
           mkdir -p "$RUNNER_TEMP/pkg/Payload"
-
-          cp -R "$RUNNER_TEMP/NORD.xcarchive/Products/Applications/App.app" \
-            "$RUNNER_TEMP/pkg/Payload/"
-
+          cp -R "$RUNNER_TEMP/NORD.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/pkg/Payload/"
           cd "$RUNNER_TEMP/pkg"
-
           zip -qry "$GITHUB_WORKSPACE/NORD-unsigned.ipa" Payload
-
           test -s "$GITHUB_WORKSPACE/NORD-unsigned.ipa"
 
       - name: Exporter le fichier IPA
