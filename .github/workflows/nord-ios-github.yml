@@ -1,0 +1,84 @@
+name: NORD iOS - IPA non signe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+
+      - name: Verifier et extraire l'application NORD
+        run: |
+          test -f nord-1.zip || { echo "::error::Le fichier nord-1.zip est introuvable a la racine du depot."; exit 1; }
+          unzip -q nord-1.zip
+          test -f nord-1/package.json || { echo "::error::package.json introuvable dans nord-1/."; exit 1; }
+          test -f nord-1/package-lock.json || { echo "::error::package-lock.json introuvable dans nord-1/."; exit 1; }
+          echo "Application trouvee dans nord-1/"
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: nord-1/package-lock.json
+
+      - name: Installer les dependances
+        working-directory: nord-1
+        run: npm ci
+
+      - name: Ajouter Capacitor iOS
+        working-directory: nord-1
+        run: |
+          CAP_VERSION=$(node -p "require('./node_modules/@capacitor/core/package.json').version")
+          npm install --no-save "@capacitor/ios@${CAP_VERSION}"
+
+      - name: Construire l'application web pour iOS
+        working-directory: nord-1
+        env:
+          MOBILE_BUILD: "1"
+        run: node scripts/with-app-env.mjs vite build
+
+      - name: Generer le projet Xcode
+        working-directory: nord-1
+        run: node scripts/ios-setup.mjs
+
+      - name: Verifier le projet Xcode genere
+        working-directory: nord-1
+        run: |
+          test -d ios/App/App.xcworkspace || { echo "::error::Le workspace Xcode n'a pas ete genere."; exit 1; }
+          xcodebuild -version
+          xcodebuild -list -workspace ios/App/App.xcworkspace
+
+      - name: Archiver sans signature Apple
+        working-directory: nord-1
+        run: |
+          xcodebuild archive \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/NORD.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Creer le fichier IPA non signe
+        run: |
+          mkdir -p "$RUNNER_TEMP/pkg/Payload"
+          cp -R "$RUNNER_TEMP/NORD.xcarchive/Products/Applications/App.app" "$RUNNER_TEMP/pkg/Payload/"
+          cd "$RUNNER_TEMP/pkg"
+          zip -qry "$GITHUB_WORKSPACE/NORD-unsigned.ipa" Payload
+          test -s "$GITHUB_WORKSPACE/NORD-unsigned.ipa"
+
+      - name: Publier le fichier IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NORD-ipa-non-signe
+          path: NORD-unsigned.ipa
+          retention-days: 30
