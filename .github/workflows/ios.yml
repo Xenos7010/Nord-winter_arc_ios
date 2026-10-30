@@ -87,16 +87,16 @@ jobs:
           zip -qry "$GITHUB_WORKSPACE/NORD-unsigned.ipa" Payload
           test -s "$GITHUB_WORKSPACE/NORD-unsigned.ipa"
 
-      - name: Exporter le fichier IPA
+      - name: Verifier le fichier IPA
+        run: |
+          unzip -l NORD-unsigned.ipa
+          test -s NORD-unsigned.ipa
+
+      - name: Publier le fichier IPA
         uses: actions/upload-artifact@v4
         with:
           name: NORD-IPA
           path: NORD-unsigned.ipa
+          if-no-files-found: error
           retention-days: 30
-          - name: Upload iOS IPA
-  uses: actions/upload-artifact@v4
-  with:
-    name: Application-iOS-IPA
-    path: |
-      build/ios/ipa/*.ipa
-    retention-days: 30
+          
