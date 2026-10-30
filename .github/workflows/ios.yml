@@ -1,5 +1,5 @@
 
-name: NORD - Compilation automatique iOS IPA
+name: NORD - Build automatique IPA
 
 on:
   workflow_dispatch:
@@ -11,74 +11,70 @@ permissions:
 
 jobs:
   build:
-    name: Dezipper, preparer et compiler NORD
+    name: Preparation et compilation NORD
     runs-on: macos-26
     timeout-minutes: 60
 
     steps:
-      # 1. Recuperer le depot GitHub
-      - name: Recuperer les fichiers
+      - name: Recuperer le depot
         uses: actions/checkout@v4
 
-      # 2. Decompresser automatiquement NORD
-      - name: Extraire nord-1.zip
+      - name: Extraire automatiquement NORD
         run: |
           if [ ! -f nord-1.zip ]; then
-            echo "::error::nord-1.zip introuvable a la racine du depot"
+            echo "::error::nord-1.zip introuvable"
             exit 1
           fi
 
           unzip -q -o nord-1.zip
 
           if [ ! -f nord-1/package.json ]; then
-            echo "::error::package.json introuvable"
+            echo "::error::package.json introuvable dans nord-1"
             exit 1
           fi
 
-          echo "Application NORD extraite avec succes"
+          echo "Application NORD extraite"
 
-      # 3. Installer Node.js
-      - name: Installer Node.js
+      - name: Installer Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: nord-1/package-lock.json
 
-      # 4. Installer les dependances
       - name: Installer les dependances NORD
         working-directory: nord-1
-        run: npm ci
+        run: |
+          node --version
+          npm --version
+          npm install --no-audit --no-fund
 
-      # 5. Installer Capacitor iOS
       - name: Installer Capacitor iOS
         working-directory: nord-1
         run: |
           CAP_VERSION=$(node -p "require('./node_modules/@capacitor/core/package.json').version")
-          npm install --no-save "@capacitor/ios@${CAP_VERSION}"
+          npm install --no-save "@capacitor/ios@${CAP_VERSION}" --no-audit --no-fund
 
-      # 6. Compiler l'application web
-      - name: Construire NORD pour iOS
+      - name: Construire NORD
         working-directory: nord-1
         env:
           MOBILE_BUILD: "1"
-        run: node scripts/with-app-env.mjs vite build
+        run: |
+          node scripts/with-app-env.mjs vite build
 
-      # 7. Creer automatiquement le projet Xcode
       - name: Generer le projet iOS
         working-directory: nord-1
-        run: node scripts/ios-setup.mjs
+        run: |
+          node scripts/ios-setup.mjs
 
-      # 8. Verifier le projet Xcode
-      - name: Verifier Xcode
+      - name: Verifier le projet Xcode
         working-directory: nord-1
         run: |
           test -d ios/App/App.xcworkspace
           xcodebuild -version
           xcodebuild -list -workspace ios/App/App.xcworkspace
 
-      # 9. Compiler l'application iOS
-      - name: Compiler NORD
+      - name: Compiler et archiver NORD
         working-directory: nord-1
         run: |
           xcodebuild archive \
@@ -91,8 +87,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      # 10. Generer le fichier IPA
-      - name: Creer le fichier IPA
+      - name: Generer le fichier IPA
         run: |
           mkdir -p "$RUNNER_TEMP/pkg/Payload"
 
@@ -105,7 +100,6 @@ jobs:
 
           test -s "$GITHUB_WORKSPACE/NORD-unsigned.ipa"
 
-      # 11. Publier le fichier IPA
       - name: Exporter le fichier IPA
         uses: actions/upload-artifact@v4
         with:
